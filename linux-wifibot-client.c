@@ -8,14 +8,43 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <SDL/SDL.h>
+#include <pthread.h>
+
 #define COMMAND_LENGTH 16 	// 16 byte
 
 char *command;
+//The event structure
+SDL_Event event;
+int sock;
 
+
+void * thread_func(void *arg)
+{
+	int i;
+	char *command = (char *) arg;
+
+	for (i = 0; i < 10; i++) {
+		puts("sent");
+		send(sock, command, strlen(command), 0);
+		sleep(1);
+	}
+	return 0;
+}
 
 int main(int argc, char **argv)
 {
-    int sock;
+	pthread_t thread1;
+	int result;
+
+	//Инициализировать SDL
+	if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
+	{
+		return 1;
+	}
+
+	SDL_SetVideoMode (320, 200, 8, 0);
+
     struct sockaddr_in addr;
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -38,54 +67,82 @@ int main(int argc, char **argv)
 
 	printf("Connected.\n");
 
-  	struct termios newt, oldt;
-  	tcgetattr(STDIN_FILENO, &oldt);
-  	newt = oldt;
-  	newt.c_lflag &= ~(ICANON | ECHO);
-  	tcsetattr(STDIN_FILENO, TCSANOW, &newt); /* enable raw mode */
+	puts("press ENTER to exit");
 
-  int c = 0;
-  puts("press ENTER to exit");
-  for (;;)			/* read_symbols */
-    {
-      c = getchar();
-      if (c == 27)		/* if ESC */
-	{
-	  c = getchar();	
-	  if (c == '[')		/* ... [ */
-	    {
-	      c = getchar();
-	      switch (c)
-		{
-		case 'A': /* Up */
-		  //message = "U"; send(sock, message, sizeof(message), 0); puts("UP"); printf("%d\n",sizeof(message)); break;
-		  command = "run=F,200,20\n"; send(sock, command, strlen(command), 0); puts("UP"); break;
-		case 'B': /* Down */
-		  command = "run=B,200,20\n"; send(sock, command, strlen(command), 0); puts("DOWN"); break;
-		case 'C': /* Right */
-		  command = "steer=600\n"; send(sock, command, strlen(command), 0); puts("RIGHT"); break;
-		case 'D': /* Left */
-		  command = "steer=1100\n"; send(sock, command, strlen(command), 0); puts("LEFT"); break;
-		default:
-		  puts("not arrow"); break;
-	      }
-	    }
-	  else 
-	    {
-	      puts("not arrow");
-	    }
-	}
-      else if (c == 10)
-	{
-	  puts("Good by");
-	  break;
-	}
-      else
-	{
-	  puts("not arrow");
-	}
-    }
-  tcsetattr(STDIN_FILENO, TCSANOW, &oldt); /* return old config */
-  return EXIT_SUCCESS;
 
+	while(1) {
+	   	if( SDL_PollEvent( &event ) ) {
+	        //Если была нажата клавиша
+	        if( event.type == SDL_KEYDOWN ) {
+	   			//Выбрать правильное сообщение
+	            switch( event.key.keysym.sym ) {
+	                case SDLK_UP:
+	                	command = "run=F,200,20\n";
+	                	//send(sock, command, strlen(command), 0);
+	                	puts("UP");
+
+	                	result = pthread_create(&thread1, NULL, thread_func, command);
+	                	if (result != 0) {
+	                		perror("Creating the thread");
+	                		return 1;
+	                	}
+
+	                	break;
+	                case SDLK_DOWN:
+	                	command = "run=B,200,20\n";
+	                	//send(sock, command, strlen(command), 0);
+	                	puts("DOWN");
+
+	                	result = pthread_create(&thread1, NULL, thread_func, command);
+	                	if (result != 0) {
+	                		perror("Creating the thread");
+	                		return 1;
+	                	}
+
+	                	break;
+	                case SDLK_LEFT:
+	                	command = "steer=600\n";
+	                	send(sock, command, strlen(command), 0);
+	                	puts("LEFT");
+	                	break;
+	                case SDLK_RIGHT:
+	                	command = "steer=1100\n";
+	                	send(sock, command, strlen(command), 0);
+	                	puts("RIGHT");
+	                	break;
+	                default:
+	                	break;
+	            }
+	        }
+			else if( event.type == SDL_KEYUP ) {
+	   			//Выбрать правильное сообщение
+	            switch( event.key.keysym.sym ) {
+	                case SDLK_UP:
+	                	puts("STOP");
+	                	pthread_cancel(thread1);
+	                	break;
+	                case SDLK_DOWN:
+	                	puts("STOP");
+	                	pthread_cancel(thread1);
+	                	break;
+	                case SDLK_LEFT:
+	                case SDLK_RIGHT:
+	                	command = "steer=850\n";
+	                	send(sock, command, strlen(command), 0);
+	                	puts("CENTER");
+	                	break;
+	                default:
+	                	break;
+	            }
+	        }
+	        //Если пользователь хочет выйти
+	        else if( event.type == SDL_QUIT ) {
+	            //Выходим из программы
+	           	//Освободить ресурсы занятые SDL
+	   			SDL_Quit();
+	  			return 0;
+	        }
+	    }
+	}
+return EXIT_SUCCESS;
 }
