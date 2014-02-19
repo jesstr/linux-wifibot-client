@@ -11,30 +11,50 @@
 #include <SDL/SDL.h>
 #include <pthread.h>
 
-#define COMMAND_LENGTH 16 	// 16 byte
+#define MAX_COMMAND_LENGTH	16
+#define CENTER_STEER_POS	850
 
-char *command;
-//The event structure
-SDL_Event event;
+char command1[MAX_COMMAND_LENGTH];	/* Independent command buffers for safe using in threads */
+char command2[MAX_COMMAND_LENGTH];
+
+char command3[MAX_COMMAND_LENGTH];	/* Command buffer for using in non-thread functions */
+
+unsigned char run_speed = 200;	/* Default forward and backward run speed value, percent */
+unsigned char run_time = 20; 	/* Default forward and backward run time value, 1=100ms */
+unsigned short steer_pos = CENTER_STEER_POS;	/* Default steering servo position, us */
+
+SDL_Event event;	/* The event structure */
 int sock;
 
 
 void * thread_func(void *arg)
 {
-	int i;
-	char *command = (char *) arg;
+	char *command;
+	unsigned char id = * (unsigned char *) arg;
+	Uint8 *keystate = SDL_GetKeyState( NULL );
 
-	for (i = 0; i < 10; i++) {
+	switch ( id ) {
+		case 1: command = command1; break;
+		case 2: command = command2; break;
+	}
+	do {
 		puts("sent");
 		send(sock, command, strlen(command), 0);
-		sleep(1);
+		usleep(500000);
+		/* Exit thread if key was released*/
+		if ( ( !(keystate[SDLK_UP]) && id == 1) ||
+			 ( !(keystate[SDLK_DOWN]) && id == 2) )
+			pthread_exit(NULL);
 	}
-	return 0;
+	while ( keystate[SDLK_UP] || keystate[SDLK_DOWN] );
+	pthread_exit(NULL);
 }
 
 int main(int argc, char **argv)
 {
 	pthread_t thread1;
+	unsigned char thread_id;
+	struct sockaddr_in addr;
 	int result;
 
 	//Инициализировать SDL
@@ -42,10 +62,7 @@ int main(int argc, char **argv)
 	{
 		return 1;
 	}
-
 	SDL_SetVideoMode (320, 200, 8, 0);
-
-    struct sockaddr_in addr;
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0) {
@@ -69,7 +86,6 @@ int main(int argc, char **argv)
 
 	puts("press ENTER to exit");
 
-
 	while(1) {
 	   	if( SDL_PollEvent( &event ) ) {
 	        //Если была нажата клавиша
@@ -77,38 +93,47 @@ int main(int argc, char **argv)
 	   			//Выбрать правильное сообщение
 	            switch( event.key.keysym.sym ) {
 	                case SDLK_UP:
-	                	command = "run=F,200,20\n";
-	                	//send(sock, command, strlen(command), 0);
+	                	sprintf(command1, "run=%s,%d,%d\n", "F", run_speed, run_time);
 	                	puts("UP");
-
-	                	result = pthread_create(&thread1, NULL, thread_func, command);
+	                	thread_id = 1;
+	                	result = pthread_create(&thread1, NULL, thread_func, &thread_id);
 	                	if (result != 0) {
 	                		perror("Creating the thread");
 	                		return 1;
 	                	}
-
 	                	break;
 	                case SDLK_DOWN:
-	                	command = "run=B,200,20\n";
-	                	//send(sock, command, strlen(command), 0);
+	                	sprintf(command2, "run=%s,%d,%d\n", "B", run_speed, run_time);
 	                	puts("DOWN");
-
-	                	result = pthread_create(&thread1, NULL, thread_func, command);
+	                	thread_id = 2;
+	                	result = pthread_create(&thread1, NULL, thread_func, &thread_id);
 	                	if (result != 0) {
 	                		perror("Creating the thread");
 	                		return 1;
 	                	}
-
 	                	break;
 	                case SDLK_LEFT:
-	                	command = "steer=600\n";
-	                	send(sock, command, strlen(command), 0);
+	                	steer_pos = 600;
+	                	sprintf(command3, "steer=%d\n", steer_pos);
+	                	send(sock, command3, strlen(command3), 0);
 	                	puts("LEFT");
 	                	break;
 	                case SDLK_RIGHT:
-	                	command = "steer=1100\n";
-	                	send(sock, command, strlen(command), 0);
+	                	steer_pos = 1100;
+	                	sprintf(command3, "steer=%d\n", steer_pos);
+	                	//command3 = strbuf;
+	                	send(sock, command3, strlen(command3), 0);
 	                	puts("RIGHT");
+	                	break;
+	                case SDLK_PAGEUP:
+	                	break;
+	                case SDLK_PAGEDOWN:
+	                	break;
+	                case SDLK_RETURN:
+	                	//Выходим из программы
+	                	//Освободить ресурсы занятые SDL
+	                	SDL_Quit();
+	                	return 0;
 	                	break;
 	                default:
 	                	break;
@@ -119,16 +144,15 @@ int main(int argc, char **argv)
 	            switch( event.key.keysym.sym ) {
 	                case SDLK_UP:
 	                	puts("STOP");
-	                	pthread_cancel(thread1);
 	                	break;
 	                case SDLK_DOWN:
 	                	puts("STOP");
-	                	pthread_cancel(thread1);
 	                	break;
 	                case SDLK_LEFT:
 	                case SDLK_RIGHT:
-	                	command = "steer=850\n";
-	                	send(sock, command, strlen(command), 0);
+	                	steer_pos = CENTER_STEER_POS;
+	                	sprintf(command3, "steer=%d\n", steer_pos);
+	                	send(sock, command3, strlen(command3), 0);
 	                	puts("CENTER");
 	                	break;
 	                default:
