@@ -12,16 +12,29 @@
 #include <pthread.h>
 
 #define MAX_COMMAND_LENGTH	16
-#define CENTER_STEER_POS	850
+#define LEFT_STEER_POS		600
+#define RIGHT_STEER_POS		1100
+#define CENTER_STEER_POS	(RIGHT_STEER_POS + LEFT_STEER_POS) / 2
 #define SPEED_CHANGE_DELAY_US	100000
 #define COMMAND_SEND_DELAY_US	500000
+
+#define KEYBOARD_SPEED_CONROL_THREAD	1	/* Speed & direstion control with keyboard thread id, */
+#define JOYSTICK_SPEED_CONROL_THREAD	3	/* Speed & direstion control with gamepad thread id */
+
+unsigned char input_mode = 0; 	/* 1 - joystick, 0 - keyboard */
+
+#define IS_ANALOG_INPUT		input_mode == 1
+#define IS_DIGITAL_INPUT	input_mode == 0
+
+#define SET_ANALOG_INPUT	input_mode = 1
+#define SET_DIGITAL_INPUT	input_mode = 0
 
 char command1[MAX_COMMAND_LENGTH];	/* Independent command buffers for safe using in threads */
 char command2[MAX_COMMAND_LENGTH];
 
 char command3[MAX_COMMAND_LENGTH];	/* Command buffer for using in non-thread functions */
 
-unsigned char run_speed = 200;	/* Default forward and backward run speed value, percent */
+unsigned char run_speed = 0;	/* Default forward and backward run speed value, percent */
 unsigned char run_time = 20; 	/* Default forward and backward run time value, 1=100ms */
 char *run_direction = "F";		/* Default forward or backward run direction, "F" or "B" */
 unsigned short steer_pos = CENTER_STEER_POS;	/* Default steering servo position, us */
@@ -55,8 +68,25 @@ void * thread_command_send(void *arg)
 			 ( !(keystate[SDLK_DOWN]) && id == 2) )
 			pthread_exit(NULL);
 	}
-	while ( keystate[SDLK_UP] || keystate[SDLK_DOWN] );
+	while (( keystate[SDLK_UP] || keystate[SDLK_DOWN] ));
+	puts("exit 2");
 	pthread_exit(NULL);
+}
+
+void * thread_joystick_control(void *arg)
+{
+	char *command;
+	//unsigned char id = * (unsigned char *) arg;
+
+	while (1) {
+		if ( IS_ANALOG_INPUT && run_speed != 0 ) {
+			sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
+			command = command3;
+			puts("joystick_sent");
+			send(sock, command, strlen(command), 0);
+			usleep(COMMAND_SEND_DELAY_US);
+		}
+	}
 }
 
 void * thread_speed_change(void *arg)
@@ -81,7 +111,7 @@ void * thread_speed_change(void *arg)
 
 int main(int argc, char **argv)
 {
-	pthread_t thread1, thread2, thread3;
+	pthread_t thread1, thread2, thread3, joystick_thread;
 	unsigned char thread_id;
 	struct sockaddr_in addr;
 	int result;
@@ -114,6 +144,25 @@ int main(int argc, char **argv)
     puts("Connected.");
 	puts("press ENTER to exit");
 
+	//Check for joysticks
+	if( SDL_NumJoysticks() < 1 ) {
+		printf( "Warning: No joysticks connected!\n" );
+	}
+	else {
+		//Load joystick
+		if( SDL_JoystickOpen( 0 ) == NULL ) {
+			printf( "Warning: Unable to open game controller!\n" );
+			//SDL_JoystickEventState(SDL_ENABLE);
+		}
+	}
+
+	/* Joystick control thread creating */
+	result = pthread_create(&joystick_thread, NULL, thread_joystick_control, NULL);
+	if (result != 0) {
+		perror("Creating the thread");
+		return 1;
+	}
+
 	while(1) {
 	   	if( SDL_PollEvent( &event ) ) {
 	        //Если была нажата клавиша
@@ -130,6 +179,7 @@ int main(int argc, char **argv)
 	                		perror("Creating the thread");
 	                		return 1;
 	                	}
+	                	SET_DIGITAL_INPUT;
 	                	break;
 	                case SDLK_DOWN:
 	                	run_direction = "B";
@@ -141,15 +191,16 @@ int main(int argc, char **argv)
 	                		perror("Creating the thread");
 	                		return 1;
 	                	}
+	                	SET_DIGITAL_INPUT;
 	                	break;
 	                case SDLK_LEFT:
-	                	steer_pos = 600;
+	                	steer_pos = LEFT_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	send(sock, command3, strlen(command3), 0);
 	                	puts("LEFT");
 	                	break;
 	                case SDLK_RIGHT:
-	                	steer_pos = 1100;
+	                	steer_pos = RIGHT_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	//command3 = strbuf;
 	                	send(sock, command3, strlen(command3), 0);
@@ -164,8 +215,7 @@ int main(int argc, char **argv)
 	                	}
 	                	break;
 	                case SDLK_RETURN:
-	                	//Выходим из программы
-	                	//Освободить ресурсы занятые SDL
+	                	pthread_cancel(joystick_thread);
 	                	SDL_Quit();
 	                	return 0;
 	                	break;
@@ -201,12 +251,52 @@ int main(int argc, char **argv)
 	                	break;
 	            }
 	        }
-	        //Если пользователь хочет выйти
 	        else if( event.type == SDL_QUIT ) {
-	            //Выходим из программы
-	           	//Освободить ресурсы занятые SDL
+	        	pthread_cancel(joystick_thread);
 	   			SDL_Quit();
 	  			return 0;
+	        }
+	        else if( event.type ==  SDL_JOYAXISMOTION ) {
+	        	//Motion on controller 0
+	        	if( event.jaxis.which == 0 ) {
+	        		switch (event.jaxis.axis) {
+	        		/* Steering axis */
+	        		case 0:
+	        			steer_pos = CENTER_STEER_POS + ((( RIGHT_STEER_POS - LEFT_STEER_POS ) / 2 ) * \
+	        						event.jaxis.value ) / 32768;
+	        			sprintf(command3, "steer=%d\n", steer_pos);
+	        			send(sock, command3, strlen(command3), 0);
+	        			break;
+	        		/* Speed & direction axis */
+	        		case 1:
+	        			if ( event.jaxis.value < 0 ) {
+	        				run_direction = "F";
+	        				run_speed = (( 0 - event.jaxis.value )  * 255 ) / 32768;
+	        				printf("%d\n",0 - event.jaxis.value );
+	        			}
+	        			else {
+	        				run_direction = "B";
+	        				run_speed = ((event.jaxis.value )  * 255 ) / 32767;
+	        				printf("%d\n", event.jaxis.value );
+	        			}
+	        			sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
+	        			send(sock, command3, strlen(command3), 0);
+	        			SET_ANALOG_INPUT;
+	        			break;
+	        		/* Turret axis */
+	        		case 2:
+	        			break;
+	        		/* Turret axis */
+	        		case 3:
+	        			break;
+	        		}
+	        	}
+	        }
+	        else if( event.type ==  SDL_JOYBUTTONDOWN ) {
+	        	//Motion on controller 0
+	        	if( event.jaxis.which == 0 ) {
+
+	        	}
 	        }
 	    }
 	}
