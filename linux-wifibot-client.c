@@ -109,9 +109,23 @@ void * thread_speed_change(void *arg)
 	pthread_exit(NULL);
 }
 
+void * thread_telemetry(void *arg)
+{
+	unsigned short bytes_read;
+	char buf[16];
+
+	while((bytes_read = recv(sock, buf, 16, 0)) > 0 ) {
+     	if(bytes_read <= 0) break;
+        printf("RX: %.*s", bytes_read, buf); // debug
+    }
+    close(sock);
+    printf("disconnected\n");
+	pthread_exit(NULL);
+}
+
 int main(int argc, char **argv)
 {
-	pthread_t thread1, thread2, thread3, joystick_thread;
+	pthread_t thread1, thread2, thread3, joystick_thread, telemetry_thread;
 	unsigned char thread_id;
 	struct sockaddr_in addr;
 	int result;
@@ -133,9 +147,9 @@ int main(int argc, char **argv)
     addr.sin_port = htons(3425); // или любой другой порт...
     //addr.sin_addr.s_addr = inet_addr("192.168.1.121");
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    
+
     puts("Connecting...");
-    
+
     if(connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("connect");
         return 2;
@@ -143,6 +157,13 @@ int main(int argc, char **argv)
 
     puts("Connected.");
 	puts("press ENTER to exit");
+
+	/* Telemetry thread creating */
+	result = pthread_create(&telemetry_thread, NULL, thread_telemetry, NULL);
+	if (result != 0) {
+		perror("Creating the thread");
+		return 1;
+	}
 
 	//Check for joysticks
 	if( SDL_NumJoysticks() < 1 ) {
