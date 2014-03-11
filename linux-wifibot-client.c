@@ -129,13 +129,27 @@ int main(int argc, char **argv)
 	unsigned char thread_id;
 	struct sockaddr_in addr;
 	int result;
+	SDL_Surface* car_img = NULL;
+	SDL_Surface* wheel_img = NULL;
+	SDL_Surface* screen = NULL;
+	SDL_Rect dest;
 
 	//Инициализировать SDL
 	if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
 	{
 		return 1;
 	}
-	SDL_SetVideoMode (320, 200, 8, 0);
+	screen = SDL_SetVideoMode (320, 200, 8, 0);
+
+	car_img = SDL_LoadBMP( "car_img.bmp" );
+	wheel_img = SDL_LoadBMP( "wheel_img.bmp" );
+
+	dest.x = 29;
+	dest.y = 0;
+
+	SDL_BlitSurface( car_img, NULL, screen, NULL );
+	SDL_BlitSurface( wheel_img, NULL, screen, &dest );
+	SDL_Flip( screen );
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0) {
@@ -238,6 +252,8 @@ int main(int argc, char **argv)
 	                case SDLK_RETURN:
 	                	pthread_cancel(joystick_thread);
 	                	SDL_Quit();
+	                	SDL_FreeSurface(wheel_img);
+	                	SDL_FreeSurface(car_img);
 	                	return 0;
 	                	break;
 	                default:
@@ -274,6 +290,8 @@ int main(int argc, char **argv)
 	        }
 	        else if( event.type == SDL_QUIT ) {
 	        	pthread_cancel(joystick_thread);
+	        	SDL_FreeSurface(wheel_img);
+	        	SDL_FreeSurface(car_img);
 	   			SDL_Quit();
 	  			return 0;
 	        }
