@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <SDL/SDL.h>
+#include <SDL2/SDL.h>
 #include <pthread.h>
 
 #define MAX_COMMAND_LENGTH	16
@@ -40,6 +40,18 @@ char *run_direction = "F";		/* Default forward or backward run direction, "F" or
 unsigned short steer_pos = CENTER_STEER_POS;	/* Default steering servo position, us */
 
 SDL_Event event;	/* The event structure */
+SDL_Surface *sdlCarSurface = NULL;
+SDL_Surface *sdlWheelSurface = NULL;
+SDL_Window *sdlWindow = NULL;
+SDL_Renderer *sdlRenderer = NULL;
+SDL_Texture *sdlCarTexture = NULL;
+SDL_Texture *sdlWheelTexture = NULL;
+SDL_Rect sdlCarDstrect;
+SDL_Rect sdlLeftWheelDstrect, sdlRightWheelDstrect;
+
+pthread_t thread1, thread2, thread3, joystick_thread, telemetry_thread;
+unsigned char thread_id;
+
 int sock;
 
 
@@ -47,7 +59,7 @@ void * thread_command_send(void *arg)
 {
 	char *command;
 	unsigned char id = * (unsigned char *) arg;
-	Uint8 *keystate = SDL_GetKeyState( NULL );
+	Uint8 *keystate = SDL_GetKeyboardState(NULL);
 
 	do {
 		switch ( id ) {
@@ -64,11 +76,11 @@ void * thread_command_send(void *arg)
 		send(sock, command, strlen(command), 0);
 		usleep(COMMAND_SEND_DELAY_US);
 		/* Exit thread if key was released*/
-		if ( ( !(keystate[SDLK_UP]) && id == 1) ||
-			 ( !(keystate[SDLK_DOWN]) && id == 2) )
+		if ( ( !(keystate[SDL_SCANCODE_UP]) && id == 1) ||
+			 ( !(keystate[SDL_SCANCODE_DOWN]) && id == 2) )
 			pthread_exit(NULL);
 	}
-	while (( keystate[SDLK_UP] || keystate[SDLK_DOWN] ));
+	while (( keystate[SDL_SCANCODE_UP] || keystate[SDL_SCANCODE_DOWN] ));
 	puts("exit 2");
 	pthread_exit(NULL);
 }
@@ -91,21 +103,21 @@ void * thread_joystick_control(void *arg)
 
 void * thread_speed_change(void *arg)
 {
-	Uint8 *keystate = SDL_GetKeyState( NULL );
+	Uint8 *keystate = SDL_GetKeyboardState( NULL );
 
 	do {
-	if ( keystate[SDLK_PAGEUP] )
+	if ( keystate[SDL_SCANCODE_PAGEUP] )
 		if ( run_speed < 255 ) {
 			run_speed++;
 			usleep(SPEED_CHANGE_DELAY_US);
 		}
-	if ( keystate[SDLK_PAGEDOWN] )
+	if ( keystate[SDL_SCANCODE_PAGEDOWN] )
 		if ( run_speed > 0 ) {
 			run_speed--;
 			usleep(SPEED_CHANGE_DELAY_US);
 		}
 	}
-	while ( keystate[SDLK_PAGEUP] || keystate[SDLK_PAGEDOWN] );
+	while ( keystate[SDL_SCANCODE_PAGEUP] || keystate[SDL_SCANCODE_PAGEDOWN] );
 	pthread_exit(NULL);
 }
 
@@ -123,33 +135,62 @@ void * thread_telemetry(void *arg)
 	pthread_exit(NULL);
 }
 
+void Quit(void) {
+	pthread_cancel(joystick_thread);
+	SDL_DestroyTexture(sdlCarTexture);
+	SDL_DestroyTexture(sdlWheelTexture);
+	SDL_DestroyRenderer(sdlRenderer);
+	SDL_DestroyWindow(sdlWindow);
+	SDL_FreeSurface(sdlCarSurface);
+	SDL_FreeSurface(sdlWheelSurface);
+	SDL_Quit();
+}
+
+void DrawCarScheme(double steer_angle) {
+	SDL_RenderClear(sdlRenderer);
+	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
+	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect, steer_angle, NULL, 0);
+	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, steer_angle, NULL, SDL_FLIP_HORIZONTAL);
+	SDL_RenderPresent(sdlRenderer);
+}
+
 int main(int argc, char **argv)
 {
-	pthread_t thread1, thread2, thread3, joystick_thread, telemetry_thread;
-	unsigned char thread_id;
 	struct sockaddr_in addr;
 	int result;
-	SDL_Surface* car_img = NULL;
-	SDL_Surface* wheel_img = NULL;
-	SDL_Surface* screen = NULL;
-	SDL_Rect dest;
 
 	//Инициализировать SDL
 	if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
 	{
 		return 1;
 	}
-	screen = SDL_SetVideoMode (320, 200, 8, 0);
 
-	car_img = SDL_LoadBMP( "car_img.bmp" );
-	wheel_img = SDL_LoadBMP( "wheel_img.bmp" );
+	SDL_CreateWindowAndRenderer(320, 240, NULL, &sdlWindow, &sdlRenderer);
 
-	dest.x = 29;
-	dest.y = 0;
+	SDL_SetRenderDrawColor(sdlRenderer, 255, 255, 255, 255);
+	SDL_RenderClear(sdlRenderer);
+	SDL_RenderPresent(sdlRenderer);
 
-	SDL_BlitSurface( car_img, NULL, screen, NULL );
-	SDL_BlitSurface( wheel_img, NULL, screen, &dest );
-	SDL_Flip( screen );
+	sdlCarSurface = SDL_LoadBMP( "car_img.bmp" );
+	sdlWheelSurface = SDL_LoadBMP( "wheel_img.bmp" );
+
+	sdlCarTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlCarSurface);
+	sdlWheelTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlWheelSurface);
+
+	SDL_GetClipRect(sdlCarSurface, &sdlCarDstrect);
+	SDL_GetClipRect(sdlWheelSurface, &sdlLeftWheelDstrect);
+	SDL_GetClipRect(sdlWheelSurface, &sdlRightWheelDstrect);
+
+	sdlLeftWheelDstrect.x = 29;
+	sdlLeftWheelDstrect.y = 0;
+	sdlRightWheelDstrect.x = 152;
+	sdlRightWheelDstrect.y = 0;
+
+	SDL_RenderClear(sdlRenderer);
+	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
+	SDL_RenderCopy(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect);
+	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, 0, NULL, SDL_FLIP_HORIZONTAL);
+	SDL_RenderPresent(sdlRenderer);
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0) {
@@ -200,9 +241,9 @@ int main(int argc, char **argv)
 
 	while(1) {
 	   	if( SDL_PollEvent( &event ) ) {
-	        //Если была нажата клавиша
 	        if( event.type == SDL_KEYDOWN ) {
-	   			//Выбрать правильное сообщение
+	        	/* We don't use keybord repeat events */
+	        	if ( !event.key.repeat ) {
 	            switch( event.key.keysym.sym ) {
 	                case SDLK_UP:
 	                	run_direction = "F";
@@ -232,6 +273,7 @@ int main(int argc, char **argv)
 	                	steer_pos = LEFT_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	send(sock, command3, strlen(command3), 0);
+	                	DrawCarScheme(-30.0);
 	                	puts("LEFT");
 	                	break;
 	                case SDLK_RIGHT:
@@ -239,6 +281,7 @@ int main(int argc, char **argv)
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	//command3 = strbuf;
 	                	send(sock, command3, strlen(command3), 0);
+	                	DrawCarScheme(30.0);
 	                	puts("RIGHT");
 	                	break;
 	                case SDLK_PAGEUP:
@@ -250,18 +293,17 @@ int main(int argc, char **argv)
 	                	}
 	                	break;
 	                case SDLK_RETURN:
-	                	pthread_cancel(joystick_thread);
-	                	SDL_Quit();
-	                	SDL_FreeSurface(wheel_img);
-	                	SDL_FreeSurface(car_img);
+	                	Quit();
 	                	return 0;
 	                	break;
 	                default:
 	                	break;
-	            }
+	            	}
+	        	}
 	        }
 			else if( event.type == SDL_KEYUP ) {
-	   			//Выбрать правильное сообщение
+				/* We don't use keybord repeat events */
+				if ( !event.key.repeat ) {
 	            switch( event.key.keysym.sym ) {
 	                case SDLK_UP:
 	                	puts("STOP");
@@ -274,6 +316,7 @@ int main(int argc, char **argv)
 	                	steer_pos = CENTER_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	send(sock, command3, strlen(command3), 0);
+	                	DrawCarScheme(0.0);
 	                	puts("CENTER");
 	                	break;
 	                case SDLK_PAGEUP:
@@ -286,13 +329,11 @@ int main(int argc, char **argv)
 	                	break;
 	                default:
 	                	break;
-	            }
+	            	}
+				}
 	        }
 	        else if( event.type == SDL_QUIT ) {
-	        	pthread_cancel(joystick_thread);
-	        	SDL_FreeSurface(wheel_img);
-	        	SDL_FreeSurface(car_img);
-	   			SDL_Quit();
+	        	Quit();
 	  			return 0;
 	        }
 	        else if( event.type ==  SDL_JOYAXISMOTION ) {
