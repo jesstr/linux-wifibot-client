@@ -21,6 +21,10 @@
 #define KEYBOARD_SPEED_CONROL_THREAD	1	/* Speed & direstion control with keyboard thread id, */
 #define JOYSTICK_SPEED_CONROL_THREAD	3	/* Speed & direstion control with gamepad thread id */
 
+#define FORWARD		1
+#define BACKWARD	2
+#define NONE 		0
+
 unsigned char input_mode = 0; 	/* 1 - joystick, 0 - keyboard */
 
 #define IS_ANALOG_INPUT		input_mode == 1
@@ -42,12 +46,15 @@ unsigned short steer_pos = CENTER_STEER_POS;	/* Default steering servo position,
 SDL_Event event;	/* The event structure */
 SDL_Surface *sdlCarSurface = NULL;
 SDL_Surface *sdlWheelSurface = NULL;
+SDL_Surface *sdlArrowSurface = NULL;
 SDL_Window *sdlWindow = NULL;
 SDL_Renderer *sdlRenderer = NULL;
 SDL_Texture *sdlCarTexture = NULL;
 SDL_Texture *sdlWheelTexture = NULL;
+SDL_Texture *sdlArrowTexture = NULL;
 SDL_Rect sdlCarDstrect;
 SDL_Rect sdlLeftWheelDstrect, sdlRightWheelDstrect;
+SDL_Rect sdlLeftArrowDstrect, sdlRightArrowDstrect;
 
 pthread_t thread1, thread2, thread3, joystick_thread, telemetry_thread;
 unsigned char thread_id;
@@ -139,10 +146,13 @@ void Quit(void) {
 	pthread_cancel(joystick_thread);
 	SDL_DestroyTexture(sdlCarTexture);
 	SDL_DestroyTexture(sdlWheelTexture);
+	SDL_DestroyTexture(sdlArrowTexture);
 	SDL_DestroyRenderer(sdlRenderer);
 	SDL_DestroyWindow(sdlWindow);
 	SDL_FreeSurface(sdlCarSurface);
 	SDL_FreeSurface(sdlWheelSurface);
+	SDL_FreeSurface(sdlArrowSurface);
+
 	SDL_Quit();
 }
 
@@ -151,6 +161,26 @@ void DrawCarScheme(double steer_angle) {
 	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
 	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect, steer_angle, NULL, 0);
 	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, steer_angle, NULL, SDL_FLIP_HORIZONTAL);
+	SDL_RenderPresent(sdlRenderer);
+}
+
+void UpdateScreen(double steer_angle, unsigned char direction, unsigned char speed) {
+	SDL_RenderClear(sdlRenderer);
+	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
+	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect, steer_angle, NULL, 0);
+	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, steer_angle, NULL, SDL_FLIP_HORIZONTAL);
+	switch (direction) {
+	case FORWARD:
+		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlRightArrowDstrect, 0, NULL, 0);
+		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlLeftArrowDstrect, 0, NULL, 0);
+		break;
+	case BACKWARD:
+		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlRightArrowDstrect, 0, NULL, SDL_FLIP_VERTICAL);
+		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlLeftArrowDstrect, 0, NULL, SDL_FLIP_VERTICAL);
+		break;
+	case NONE:
+		break;
+	}
 	SDL_RenderPresent(sdlRenderer);
 }
 
@@ -173,24 +203,32 @@ int main(int argc, char **argv)
 
 	sdlCarSurface = SDL_LoadBMP( "car_img.bmp" );
 	sdlWheelSurface = SDL_LoadBMP( "wheel_img.bmp" );
+	sdlArrowSurface = SDL_LoadBMP( "arrow_img.bmp" );
 
 	sdlCarTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlCarSurface);
 	sdlWheelTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlWheelSurface);
+	sdlArrowTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlArrowSurface);
 
 	SDL_GetClipRect(sdlCarSurface, &sdlCarDstrect);
 	SDL_GetClipRect(sdlWheelSurface, &sdlLeftWheelDstrect);
 	SDL_GetClipRect(sdlWheelSurface, &sdlRightWheelDstrect);
+	SDL_GetClipRect(sdlArrowSurface, &sdlLeftArrowDstrect);
+	SDL_GetClipRect(sdlArrowSurface, &sdlRightArrowDstrect);
 
-	sdlLeftWheelDstrect.x = 29;
-	sdlLeftWheelDstrect.y = 0;
-	sdlRightWheelDstrect.x = 152;
-	sdlRightWheelDstrect.y = 0;
+	sdlCarDstrect.y = 20;
+	sdlCarDstrect.x = 0;
 
-	SDL_RenderClear(sdlRenderer);
-	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
-	SDL_RenderCopy(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect);
-	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, 0, NULL, SDL_FLIP_HORIZONTAL);
-	SDL_RenderPresent(sdlRenderer);
+	sdlLeftWheelDstrect.x = sdlCarDstrect.x + 29;
+	sdlLeftWheelDstrect.y = sdlCarDstrect.y + 0;
+	sdlRightWheelDstrect.x = sdlCarDstrect.x + 152;
+	sdlRightWheelDstrect.y = sdlLeftWheelDstrect.y;
+
+	sdlLeftArrowDstrect.x = sdlCarDstrect.x + 19;
+	sdlRightArrowDstrect.x = sdlCarDstrect.x + 142;
+	sdlLeftArrowDstrect.y = sdlCarDstrect.y + 85;
+	sdlRightArrowDstrect.y = sdlLeftArrowDstrect.y;
+
+	UpdateScreen(0.0, NONE, run_speed);
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0) {
@@ -256,6 +294,7 @@ int main(int argc, char **argv)
 	                		return 1;
 	                	}
 	                	SET_DIGITAL_INPUT;
+	                	UpdateScreen(0.0, FORWARD, run_speed);
 	                	break;
 	                case SDLK_DOWN:
 	                	run_direction = "B";
@@ -268,12 +307,14 @@ int main(int argc, char **argv)
 	                		return 1;
 	                	}
 	                	SET_DIGITAL_INPUT;
+	                	UpdateScreen(0.0, BACKWARD, run_speed);
 	                	break;
 	                case SDLK_LEFT:
 	                	steer_pos = LEFT_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	send(sock, command3, strlen(command3), 0);
-	                	DrawCarScheme(-30.0);
+	                	//DrawCarScheme(-30.0);
+	                	UpdateScreen(-30.0, NONE, run_speed);
 	                	puts("LEFT");
 	                	break;
 	                case SDLK_RIGHT:
@@ -281,7 +322,8 @@ int main(int argc, char **argv)
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	//command3 = strbuf;
 	                	send(sock, command3, strlen(command3), 0);
-	                	DrawCarScheme(30.0);
+	                	//DrawCarScheme(30.0);
+	                	UpdateScreen(30.0, NONE, run_speed);
 	                	puts("RIGHT");
 	                	break;
 	                case SDLK_PAGEUP:
@@ -307,9 +349,11 @@ int main(int argc, char **argv)
 	            switch( event.key.keysym.sym ) {
 	                case SDLK_UP:
 	                	puts("STOP");
+	                	UpdateScreen(0.0, NONE, run_speed);
 	                	break;
 	                case SDLK_DOWN:
 	                	puts("STOP");
+	                	UpdateScreen(0.0, NONE, run_speed);
 	                	break;
 	                case SDLK_LEFT:
 	                case SDLK_RIGHT:
