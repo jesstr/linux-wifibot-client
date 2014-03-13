@@ -1,4 +1,5 @@
 #include <stdio.h>
+//#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -10,6 +11,8 @@
 
 #include <SDL2/SDL.h>
 #include <pthread.h>
+
+#define OPT_BUF_SIZE 	16
 
 #define MAX_COMMAND_LENGTH	16
 #define LEFT_STEER_POS		600
@@ -197,12 +200,56 @@ void UpdateScreen(double steer_angle, unsigned char direction, unsigned char spe
 int main(int argc, char **argv)
 {
 	struct sockaddr_in addr;
-	int result;
+	int opt, result;
 
-	//Инициализировать SDL
+	char dest_addr[OPT_BUF_SIZE + 1] = "127.0.0.1";
+	char dest_port[OPT_BUF_SIZE + 1] = "3425";
+	unsigned char joystickID = 0;	/* Default joystick Id */
+
+	/* Init SDL */
 	if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
 	{
 		return 1;
+	}
+
+	while (-1 != (opt = getopt(argc, argv, "hJj:i:p:"))) {
+		switch (opt) {
+		/* Show help */
+		case '?':
+		case 'h':
+			puts("help: ");
+			return 0;
+		/* Show available joysticks */
+		case 'J':
+			/* Check for joysticks */
+			if( SDL_NumJoysticks() < 1 ) {
+				printf( "Joysticks discovering: No joysticks connected!\n" );
+			}
+			else {
+				printf( "Joysticks discovering: %d joysticks found!\n", SDL_NumJoysticks());
+				int i;
+				printf("ID  DEVICE NAME\n");
+				for (i = 0; i < SDL_NumJoysticks(); i++) {
+					printf( "%d - %s\n", i, SDL_JoystickNameForIndex(i));
+				}
+			}
+			return 0;
+			break;
+		/* Choise joystick by id */
+		case 'j':
+			joystickID = atoi(optarg);
+			break;
+		/* Set destination ip addres */
+		case 'i':
+			snprintf(dest_addr, OPT_BUF_SIZE, "%s", optarg);
+			break;
+		/* Set destination port */
+		case 'p':
+			snprintf(dest_port, OPT_BUF_SIZE, "%s", optarg);
+			break;
+		default:
+			break;
+		}
 	}
 
 	SDL_CreateWindowAndRenderer(640, 480, NULL, &sdlWindow, &sdlRenderer);
@@ -261,11 +308,10 @@ int main(int argc, char **argv)
     }
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(3425); // или любой другой порт...
-    //addr.sin_addr.s_addr = inet_addr("192.168.1.121");
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = inet_addr(dest_addr);
+    addr.sin_port = htons(atoi(dest_port));
 
-    puts("Connecting...");
+    printf("Connecting %s:%s...", dest_addr, dest_port);
 
     if(connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("connect");
@@ -282,13 +328,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	//Check for joysticks
+	/* Check for joysticks */
 	if( SDL_NumJoysticks() < 1 ) {
 		printf( "Warning: No joysticks connected!\n" );
 	}
 	else {
-		//Load joystick
-		if( SDL_JoystickOpen( 0 ) == NULL ) {
+		/* Open joystick */
+		if( SDL_JoystickOpen( joystickID ) == NULL ) {
 			printf( "Warning: Unable to open game controller!\n" );
 			//SDL_JoystickEventState(SDL_ENABLE);
 		}
@@ -339,7 +385,6 @@ int main(int argc, char **argv)
 	                	steer_pos = LEFT_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	send(sock, command3, strlen(command3), 0);
-	                	//DrawCarScheme(-30.0);
 	                	//UpdateScreen(-30.0, NONE, run_speed);
 	                	puts("LEFT");
 	                	break;
@@ -348,7 +393,6 @@ int main(int argc, char **argv)
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	//command3 = strbuf;
 	                	send(sock, command3, strlen(command3), 0);
-	                	//DrawCarScheme(30.0);
 	                	//UpdateScreen(30.0, NONE, run_speed);
 	                	puts("RIGHT");
 	                	break;
@@ -388,7 +432,6 @@ int main(int argc, char **argv)
 	                	steer_pos = CENTER_STEER_POS;
 	                	sprintf(command3, "steer=%d\n", steer_pos);
 	                	send(sock, command3, strlen(command3), 0);
-	                	//DrawCarScheme(0.0);
 	                	//UpdateScreen(0.0, NONE, run_speed);
 	                	puts("CENTER");
 	                	break;
