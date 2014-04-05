@@ -20,6 +20,9 @@
 #define CENTER_STEER_POS	(RIGHT_STEER_POS + LEFT_STEER_POS) / 2
 #define SPEED_CHANGE_DELAY_US	10000
 #define COMMAND_SEND_DELAY_US	500000
+#define JOYSTICK_STEER_TRESHOLD_VALUE	10
+#define	JOYSTICK_RUN_TRESHOLD_VALUE 	5
+#define	JOYSTICK_RUN_DEADZONE_VALUE 	100
 
 #define KEYBOARD_SPEED_CONROL_THREAD	1	/* Speed & direstion control with keyboard thread id, */
 #define JOYSTICK_SPEED_CONROL_THREAD	3	/* Speed & direstion control with gamepad thread id */
@@ -36,12 +39,14 @@ volatile unsigned char input_mode = 0; 	/* 1 - joystick, 0 - keyboard */
 #define SET_ANALOG_INPUT	input_mode = 1
 #define SET_DIGITAL_INPUT	input_mode = 0
 
+#define ABS(x)	( (x) < 0 ? -(x) : (x) )
+
 char command1[MAX_COMMAND_LENGTH];	/* Independent command buffers for safe using in threads */
 char command2[MAX_COMMAND_LENGTH];
 
 char command3[MAX_COMMAND_LENGTH];	/* Command buffer for using in non-thread functions */
 
-unsigned char run_speed = 0;	/* Default forward and backward run speed value, percent */
+unsigned char run_speed = JOYSTICK_RUN_DEADZONE_VALUE;	/* Default forward and backward run speed value, percent */
 unsigned char run_time = 20; 	/* Default forward and backward run time value, 1=100ms */
 volatile char *run_direction = "F";		/* Default forward or backward run direction, "F" or "B" */
 volatile unsigned char chassis_state = NONE;		/* Marker of current chassis state: NONE, FORWARD or BACKWARD */
@@ -52,19 +57,23 @@ SDL_Surface *sdlCarSurface = NULL;
 SDL_Surface *sdlWheelSurface = NULL;
 SDL_Surface *sdlArrowSurface = NULL;
 SDL_Surface *sdlSpeedometerSurface = NULL;
-SDL_Surface *sdlMeterarrowSurface = NULL;
+SDL_Surface *sdlPwmSurface = NULL;
+SDL_Surface *sdlMeterArrowSurface = NULL;
 SDL_Window *sdlWindow = NULL;
 SDL_Renderer *sdlRenderer = NULL;
 SDL_Texture *sdlCarTexture = NULL;
 SDL_Texture *sdlWheelTexture = NULL;
 SDL_Texture *sdlArrowTexture = NULL;
 SDL_Texture *sdlSpeedometerTexture = NULL;
-SDL_Texture *sdlMeterarrowTexture = NULL;
+SDL_Texture *sdlPwmTexture = NULL;
+SDL_Texture *sdlMeterArrowTexture = NULL;
+SDL_Texture *sdlPwmArrowTexture = NULL;
 SDL_Rect sdlCarDstrect;
 SDL_Rect sdlLeftWheelDstrect, sdlRightWheelDstrect;
 SDL_Rect sdlLeftArrowDstrect, sdlRightArrowDstrect;
-SDL_Rect sdlSpeedometerDstrect, sdlMeterarrowDstrect;
-SDL_Point sdlMeterarrowCenterPoint;
+SDL_Rect sdlSpeedometerDstrect, sdlMeterArrowDstrect;
+SDL_Rect sdlPwmDstrect, sdlPwmArrowDstrect;;
+SDL_Point sdlMeterArrowCenterPoint, sdlPwmArrowCenterPoint;
 
 pthread_t thread1, thread2, thread3, joystick_thread, telemetry_thread;
 unsigned char thread_id;
@@ -72,7 +81,7 @@ unsigned char thread_id;
 int sock;
 
 
-void UpdateScreen(double steer_angle, unsigned char direction, unsigned char speed);
+void UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed);
 
 
 void * thread_command_send(void *arg)
@@ -101,41 +110,46 @@ void * thread_command_send(void *arg)
 			pthread_exit(NULL);
 	}
 	while (( keystate[SDL_SCANCODE_UP] || keystate[SDL_SCANCODE_DOWN] ));
-	puts("exit 2");
 	pthread_exit(NULL);
 }
 
 void * thread_joystick_control(void *arg)
 {
 	char *command;
-	//unsigned char id = * (unsigned char *) arg;
 
 	while (1) {
-		if ( IS_ANALOG_INPUT && run_speed != 0 ) {
-			sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
-			command = command3;
-			puts("joystick_sent");
-			send(sock, command, strlen(command), 0);
-			usleep(COMMAND_SEND_DELAY_US);
+		if ( IS_ANALOG_INPUT ) {
+			if ( run_speed > JOYSTICK_RUN_DEADZONE_VALUE + JOYSTICK_RUN_TRESHOLD_VALUE ) {
+				sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
+				command = command3;
+				puts("joystick_sent"); //debug
+				send(sock, command, strlen(command), 0);
+				usleep(COMMAND_SEND_DELAY_US);
+			}
 		}
 	}
 }
 
 void * thread_speed_change(void *arg)
 {
+	unsigned char id = * (unsigned char *) arg;
 	Uint8 *keystate = SDL_GetKeyboardState( NULL );
 
 	do {
 	if ( keystate[SDL_SCANCODE_PAGEUP] )
 		if ( run_speed < 255 ) {
 			run_speed++;
-			usleep(SPEED_CHANGE_DELAY_US);
 		}
 	if ( keystate[SDL_SCANCODE_PAGEDOWN] )
-		if ( run_speed > 0 ) {
+		if ( run_speed > JOYSTICK_RUN_DEADZONE_VALUE ) {
 			run_speed--;
-			usleep(SPEED_CHANGE_DELAY_US);
 		}
+	usleep(SPEED_CHANGE_DELAY_US);
+	/* Exit thread if key was released */
+	if ( ( !(keystate[SDL_SCANCODE_PAGEUP]) && id == 1) ||
+		 ( !(keystate[SDL_SCANCODE_PAGEDOWN]) && id == 2) ) {
+		pthread_exit(NULL);
+	}
 	}
 	while ( keystate[SDL_SCANCODE_PAGEUP] || keystate[SDL_SCANCODE_PAGEDOWN] );
 	pthread_exit(NULL);
@@ -161,24 +175,29 @@ void Quit(void) {
 	SDL_DestroyTexture(sdlWheelTexture);
 	SDL_DestroyTexture(sdlArrowTexture);
 	SDL_DestroyTexture(sdlSpeedometerTexture);
-	SDL_DestroyTexture(sdlMeterarrowTexture);
+	SDL_DestroyTexture(sdlPwmTexture);
+	SDL_DestroyTexture(sdlMeterArrowTexture);
+	SDL_DestroyTexture(sdlPwmArrowTexture);
 	SDL_DestroyRenderer(sdlRenderer);
 	SDL_DestroyWindow(sdlWindow);
 	SDL_FreeSurface(sdlCarSurface);
 	SDL_FreeSurface(sdlWheelSurface);
 	SDL_FreeSurface(sdlArrowSurface);
 	SDL_FreeSurface(sdlSpeedometerSurface);
-	SDL_FreeSurface(sdlMeterarrowSurface);
+	SDL_FreeSurface(sdlPwmSurface);
+	SDL_FreeSurface(sdlMeterArrowSurface);
 
 	SDL_Quit();
 }
 
-void UpdateScreen(double steer_angle, unsigned char direction, unsigned char speed) {
+void UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed) {
 	SDL_RenderClear(sdlRenderer);
 	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
 	SDL_RenderCopy(sdlRenderer, sdlSpeedometerTexture, NULL, &sdlSpeedometerDstrect);
+	SDL_RenderCopy(sdlRenderer, sdlPwmTexture, NULL, &sdlPwmDstrect);
 
-	SDL_RenderCopyEx(sdlRenderer, sdlMeterarrowTexture, NULL, &sdlMeterarrowDstrect, ( (double) speed ) - 135.0, &sdlMeterarrowCenterPoint, 0);
+	SDL_RenderCopyEx(sdlRenderer, sdlMeterArrowTexture, NULL, &sdlMeterArrowDstrect, ( (double) pwm ) - 135.0, &sdlMeterArrowCenterPoint, 0);
+	SDL_RenderCopyEx(sdlRenderer, sdlPwmArrowTexture, NULL, &sdlPwmArrowDstrect, ( (double) speed ) - 135.0, &sdlPwmArrowCenterPoint, 0);
 
 	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect, steer_angle, NULL, 0);
 	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, steer_angle, NULL, SDL_FLIP_HORIZONTAL);
@@ -262,13 +281,16 @@ int main(int argc, char **argv)
 	sdlWheelSurface = SDL_LoadBMP( "wheel_img.bmp" );
 	sdlArrowSurface = SDL_LoadBMP( "arrow_img.bmp" );
 	sdlSpeedometerSurface = SDL_LoadBMP( "speedometer_small_img.bmp" );
-	sdlMeterarrowSurface = SDL_LoadBMP( "meterarrow_small_img.bmp" );
+	sdlPwmSurface = SDL_LoadBMP( "pwm_small_img.bmp" );
+	sdlMeterArrowSurface = SDL_LoadBMP( "meterarrow_small_img.bmp" );
 
 	sdlCarTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlCarSurface);
 	sdlWheelTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlWheelSurface);
 	sdlArrowTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlArrowSurface);
 	sdlSpeedometerTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlSpeedometerSurface);
-	sdlMeterarrowTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlMeterarrowSurface);
+	sdlPwmTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlPwmSurface);
+	sdlMeterArrowTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlMeterArrowSurface);
+	sdlPwmArrowTexture = sdlMeterArrowTexture;
 
 	SDL_GetClipRect(sdlCarSurface, &sdlCarDstrect);
 	SDL_GetClipRect(sdlWheelSurface, &sdlLeftWheelDstrect);
@@ -276,7 +298,9 @@ int main(int argc, char **argv)
 	SDL_GetClipRect(sdlArrowSurface, &sdlLeftArrowDstrect);
 	SDL_GetClipRect(sdlArrowSurface, &sdlRightArrowDstrect);
 	SDL_GetClipRect(sdlSpeedometerSurface, &sdlSpeedometerDstrect);
-	SDL_GetClipRect(sdlMeterarrowSurface, &sdlMeterarrowDstrect);
+	SDL_GetClipRect(sdlPwmSurface, &sdlPwmDstrect);
+	SDL_GetClipRect(sdlMeterArrowSurface, &sdlMeterArrowDstrect);
+	sdlPwmArrowDstrect = sdlMeterArrowDstrect;
 
 	sdlCarDstrect.y = 20;
 	sdlCarDstrect.x = 0;
@@ -291,15 +315,22 @@ int main(int argc, char **argv)
 	sdlLeftArrowDstrect.y = sdlCarDstrect.y + 85;
 	sdlRightArrowDstrect.y = sdlLeftArrowDstrect.y;
 
+	sdlPwmDstrect.x = 450;
+	sdlPwmDstrect.y = 15;
 	sdlSpeedometerDstrect.x = 270;
 	sdlSpeedometerDstrect.y = 15;
 
-	sdlMeterarrowDstrect.x = sdlSpeedometerDstrect.x + 74;
-	sdlMeterarrowDstrect.y = sdlSpeedometerDstrect.y + 26;
-	sdlMeterarrowCenterPoint.x = sdlMeterarrowDstrect.w - 11;
-	sdlMeterarrowCenterPoint.y = sdlMeterarrowDstrect.h - 14;
+	sdlMeterArrowDstrect.x = sdlSpeedometerDstrect.x + 74;
+	sdlMeterArrowDstrect.y = sdlSpeedometerDstrect.y + 26;
+	sdlMeterArrowCenterPoint.x = sdlMeterArrowDstrect.w - 11;
+	sdlMeterArrowCenterPoint.y = sdlMeterArrowDstrect.h - 14;
 
-	UpdateScreen(0.0, NONE, run_speed);
+	sdlPwmArrowDstrect.x = sdlPwmDstrect.x + 74;
+	sdlPwmArrowDstrect.y = sdlPwmDstrect.y + 26;
+	sdlPwmArrowCenterPoint.x = sdlPwmArrowDstrect.w - 11;
+	sdlPwmArrowCenterPoint.y = sdlPwmArrowDstrect.h - 14;
+
+	UpdateScreen(0.0, NONE, run_speed, 0);
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0) {
@@ -397,8 +428,16 @@ int main(int argc, char **argv)
 	                	puts("RIGHT");
 	                	break;
 	                case SDLK_PAGEUP:
+	                	thread_id = 1;
+	                	result = pthread_create(&thread3, NULL, thread_speed_change, &thread_id);
+	                	if (result != 0) {
+	                		perror("Creating the thread");
+	                		return 1;
+	                	}
+	                	break;
 	                case SDLK_PAGEDOWN:
-	                	result = pthread_create(&thread3, NULL, thread_speed_change, NULL);
+	                	thread_id = 2;
+	                	result = pthread_create(&thread3, NULL, thread_speed_change, &thread_id);
 	                	if (result != 0) {
 	                		perror("Creating the thread");
 	                		return 1;
@@ -437,11 +476,13 @@ int main(int argc, char **argv)
 	                	break;
 	                case SDLK_PAGEUP:
 	                case SDLK_PAGEDOWN:
+	                	/*
 	                	result = pthread_cancel(thread3);
 	                	if (result != 0) {
 	                		perror("Cancelling the thread");
 	                		return 1;
 	                	}
+	                	*/
 	                	break;
 	                default:
 	                	break;
@@ -454,50 +495,64 @@ int main(int argc, char **argv)
 	        }
 	        else if( event.type ==  SDL_JOYAXISMOTION ) {
 	        	//Motion on controller 0
-	        	if( event.jaxis.which == 0 ) {
+	        	if( event.jaxis.which == joystickID ) {
+	        		unsigned short value;
 	        		switch (event.jaxis.axis) {
 	        		/* Steering axis */
-	        		case 0:
-	        			steer_pos = CENTER_STEER_POS + ((( RIGHT_STEER_POS - LEFT_STEER_POS ) / 2 ) * \
+	        		case 3:
+	        			value = CENTER_STEER_POS + ((( RIGHT_STEER_POS - LEFT_STEER_POS ) / 2 ) * \
 	        						event.jaxis.value ) / 32768;
-	        			sprintf(command3, "steer=%d\n", steer_pos);
-	        			send(sock, command3, strlen(command3), 0);
+	        			/* Joystick steer treshold protection */
+	        			if ( ABS( steer_pos - value ) > JOYSTICK_STEER_TRESHOLD_VALUE ) {
+	        				steer_pos = value;
+	        				sprintf(command3, "steer=%d\n", steer_pos);
+	        				send(sock, command3, strlen(command3), 0);
+	        			}
 	        			break;
 	        		/* Speed & direction axis */
-	        		case 1:
+	        		case 2:
 	        			if ( event.jaxis.value < 0 ) {
 	        				run_direction = "F";
 	        				chassis_state = FORWARD;
-	        				run_speed = (( 0 - event.jaxis.value )  * 255 ) / 32768;
-	        				printf("%d\n",0 - event.jaxis.value );
+	        				//run_speed = (( 0 - event.jaxis.value )  * 255 ) / 32768;
+	        				//printf("%d\n",0 - event.jaxis.value ); // debug
 	        			}
-	        			else {
+	        			else if ( event.jaxis.value > 0 ) {
 	        				run_direction = "B";
 	        				chassis_state = BACKWARD;
-	        				run_speed = ((event.jaxis.value )  * 255 ) / 32767;
-	        				printf("%d\n", event.jaxis.value );
+	        				//run_speed = ((event.jaxis.value )  * 255 ) / 32767;
+	        				//printf("%d\n", event.jaxis.value ); // debug
 	        			}
-	        			sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
-	        			send(sock, command3, strlen(command3), 0);
-	        			SET_ANALOG_INPUT;
+	        			else {
+	        				chassis_state = NONE;
+	        			}
+	        			value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_RUN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
+	        			printf("%d\n", ABS(event.jaxis.value) ); // debug
+	        			/* Joystick run treshold protection */
+	        			if ( ABS( run_speed - value ) > JOYSTICK_RUN_TRESHOLD_VALUE ) {
+	        				run_speed = value;
+	        				sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
+	        				send(sock, command3, strlen(command3), 0);
+	        				SET_ANALOG_INPUT;
+	        			}
 	        			break;
 	        		/* Turret axis */
-	        		case 2:
+	        		case 0:
 	        			break;
 	        		/* Turret axis */
-	        		case 3:
+	        		case 1:
 	        			break;
 	        		}
 	        	}
 	        }
 	        else if( event.type ==  SDL_JOYBUTTONDOWN ) {
 	        	//Motion on controller 0
-	        	if( event.jaxis.which == 0 ) {
+	        	if( event.jaxis.which == joystickID ) {
 
 	        	}
 	        }
 	    }
-	UpdateScreen((double)((0 - CENTER_STEER_POS + steer_pos) / 8), chassis_state, run_speed);
+	UpdateScreen((double)((0 - CENTER_STEER_POS + steer_pos) / 6), chassis_state, run_speed, 0);
 	}
 return 0;
 }
