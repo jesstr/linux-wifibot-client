@@ -23,6 +23,8 @@
 #define JOYSTICK_STEER_TRESHOLD_VALUE	10
 #define	JOYSTICK_RUN_TRESHOLD_VALUE 	5
 #define	JOYSTICK_RUN_DEADZONE_VALUE 	150
+#define	JOYSTICK_TURN_DEADZONE_VALUE 	0
+#define	JOYSTICK_TURN_TRESHOLD_VALUE 	5
 
 #define KEYBOARD_SPEED_CONROL_THREAD	1	/* Speed & direstion control with keyboard thread id, */
 #define JOYSTICK_SPEED_CONROL_THREAD	3	/* Speed & direstion control with gamepad thread id */
@@ -51,6 +53,11 @@ unsigned char run_time = 20; 	/* Default forward and backward run time value, 1=
 volatile char *run_direction = "F";		/* Default forward or backward run direction, "F" or "B" */
 volatile unsigned char chassis_state = NONE;		/* Marker of current chassis state: NONE, FORWARD or BACKWARD */
 volatile unsigned short steer_pos = CENTER_STEER_POS;	/* Default steering servo position, us */
+
+unsigned char turn_speed = JOYSTICK_RUN_DEADZONE_VALUE;	/* Default forward and backward run speed value, percent */
+unsigned char turn_time = 5; 	/* Default forward and backward run time value, 1=100ms */
+volatile char *turn_direction = "R";		/* Default forward or backward run direction, "F" or "B" */
+
 
 SDL_Event event;	/* The event structure */
 SDL_Surface *sdlCarSurface = NULL;
@@ -526,7 +533,7 @@ int main(int argc, char **argv)
 	        			else {
 	        				chassis_state = NONE;
 	        			}
-	        			value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_RUN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
+	        			value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_TURN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
 	        			printf("%d\n", ABS(event.jaxis.value) ); // debug
 	        			/* Joystick run treshold protection */
 	        			if ( ABS( run_speed - value ) > JOYSTICK_RUN_TRESHOLD_VALUE ) {
@@ -537,9 +544,29 @@ int main(int argc, char **argv)
 	        			}
 	        			break;
 	        		/* Turret axis */
-	        		case 0:
-	        			break;
-	        		/* Turret axis */
+					case 0:
+						if ( event.jaxis.value < 0 ) {
+							turn_direction = "R";
+//							chassis_state = FORWARD;
+						}
+						else if ( event.jaxis.value > 0 ) {
+							turn_direction = "L";
+//							chassis_state = BACKWARD;
+						}
+						else {
+//							chassis_state = NONE;
+						}
+						value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_TURN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
+						printf("%d\n", ABS(event.jaxis.value) ); // debug
+						/* Joystick run treshold protection */
+						if ( ABS( turn_speed - value ) > JOYSTICK_TURN_TRESHOLD_VALUE ) {
+							turn_speed = value;
+							sprintf(command3, "turhdc=%s,%d,%d\n", turn_direction, turn_speed, turn_time);
+							send(sock, command3, strlen(command3), 0);
+							SET_ANALOG_INPUT;
+						}
+						break;
+					/* Turret axis */
 	        		case 1:
 	        			break;
 	        		}
