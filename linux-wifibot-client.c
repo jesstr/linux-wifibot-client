@@ -133,6 +133,13 @@ void * thread_joystick_control(void *arg)
 				send(sock, command, strlen(command), 0);
 				usleep(COMMAND_SEND_DELAY_US);
 			}
+			if ( turn_speed > JOYSTICK_TURN_DEADZONE_VALUE + JOYSTICK_TURN_TRESHOLD_VALUE ) {
+				sprintf(command3, "turhdc=%s,%d,%d\n", turn_direction, turn_speed, turn_time);
+				command = command3;
+				puts("joystick_sent"); //debug
+				send(sock, command, strlen(command), 0);
+				usleep(100000);
+			}
 		}
 	}
 }
@@ -512,6 +519,7 @@ int main(int argc, char **argv)
 	        			/* Joystick steer treshold protection */
 	        			if ( ABS( steer_pos - value ) > JOYSTICK_STEER_TRESHOLD_VALUE ) {
 	        				steer_pos = value;
+	        				printf("steer_pos = %d\n", steer_pos);
 	        				sprintf(command3, "steer=%d\n", steer_pos);
 	        				send(sock, command3, strlen(command3), 0);
 	        			}
@@ -533,7 +541,7 @@ int main(int argc, char **argv)
 	        			else {
 	        				chassis_state = NONE;
 	        			}
-	        			value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_TURN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
+	        			value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_RUN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
 	        			printf("%d\n", ABS(event.jaxis.value) ); // debug
 	        			/* Joystick run treshold protection */
 	        			if ( ABS( run_speed - value ) > JOYSTICK_RUN_TRESHOLD_VALUE ) {
@@ -556,9 +564,9 @@ int main(int argc, char **argv)
 						else {
 //							chassis_state = NONE;
 						}
-						value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_TURN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
+						value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_TURN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_TURN_DEADZONE_VALUE;
 						printf("%d\n", ABS(event.jaxis.value) ); // debug
-						/* Joystick run treshold protection */
+						/* Joystick turn treshold protection */
 						if ( ABS( turn_speed - value ) > JOYSTICK_TURN_TRESHOLD_VALUE ) {
 							turn_speed = value;
 							sprintf(command3, "turhdc=%s,%d,%d\n", turn_direction, turn_speed, turn_time);
