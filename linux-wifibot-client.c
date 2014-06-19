@@ -19,17 +19,22 @@
 #define RIGHT_STEER_POS		1200
 #define CENTER_STEER_POS	(RIGHT_STEER_POS + LEFT_STEER_POS) / 2
 #define SPEED_CHANGE_DELAY_US	10000
-#define COMMAND_SEND_DELAY_US	500000
+#define COMMAND_SEND_DELAY_US	100000
 #define JOYSTICK_STEER_TRESHOLD_VALUE	10
 #define	JOYSTICK_RUN_TRESHOLD_VALUE 	5
 #define	JOYSTICK_RUN_DEADZONE_VALUE 	150
+#define	TURRET_HOR_DC_DEADZONE_VALUE 	70
+#define	TURRET_HOR_DC_TRESHOLD_VALUE 	2
 
 #define KEYBOARD_SPEED_CONROL_THREAD	1	/* Speed & direstion control with keyboard thread id, */
 #define JOYSTICK_SPEED_CONROL_THREAD	3	/* Speed & direstion control with gamepad thread id */
 
 #define FORWARD		1
 #define BACKWARD	2
+#define LEFT		3
+#define RIGHT		4
 #define NONE 		0
+#define STOP 		0
 
 volatile unsigned char input_mode = 0; 	/* 1 - joystick, 0 - keyboard */
 
@@ -50,7 +55,13 @@ unsigned char run_speed = JOYSTICK_RUN_DEADZONE_VALUE;	/* Default forward and ba
 unsigned char run_time = 20; 	/* Default forward and backward run time value, 1=100ms */
 volatile char *run_direction = "F";		/* Default forward or backward run direction, "F" or "B" */
 volatile unsigned char chassis_state = NONE;		/* Marker of current chassis state: NONE, FORWARD or BACKWARD */
+volatile unsigned char turret_state = STOP;
 volatile unsigned short steer_pos = CENTER_STEER_POS;	/* Default steering servo position, us */
+
+unsigned char turn_speed = TURRET_HOR_DC_DEADZONE_VALUE;	/* Default forward and backward run speed value, percent */
+unsigned char turn_time = 5; 	/* Default forward and backward run time value, 1=100ms */
+volatile char *turn_direction = "R";		/* Default forward or backward run direction, "F" or "B" */
+
 
 SDL_Event event;	/* The event structure */
 SDL_Surface *sdlCarSurface = NULL;
@@ -122,10 +133,16 @@ void * thread_joystick_control(void *arg)
 			if ( run_speed > JOYSTICK_RUN_DEADZONE_VALUE + JOYSTICK_RUN_TRESHOLD_VALUE ) {
 				sprintf(command3, "run=%s,%d,%d\n", run_direction, run_speed, run_time);
 				command = command3;
-				puts("joystick_sent"); //debug
+				puts("joystick_run_sent"); //debug
 				send(sock, command, strlen(command), 0);
-				usleep(COMMAND_SEND_DELAY_US);
 			}
+			if ( turn_speed > TURRET_HOR_DC_DEADZONE_VALUE + TURRET_HOR_DC_TRESHOLD_VALUE ) {
+				sprintf(command3, "turhdc=%s,%d,%d\n", turn_direction, turn_speed, turn_time);
+				command = command3;
+				puts("turret_turn_sent"); //debug
+				send(sock, command, strlen(command), 0);
+			}
+			usleep(COMMAND_SEND_DELAY_US);
 		}
 	}
 }
@@ -537,9 +554,36 @@ int main(int argc, char **argv)
 	        			}
 	        			break;
 	        		/* Turret axis */
-	        		case 0:
-	        			break;
-	        		/* Turret axis */
+					case 0:
+						if (turret_state == STOP) {
+							turn_speed = 150;
+						}
+						else {
+							value = ( ABS(event.jaxis.value)  * ( 200 - TURRET_HOR_DC_DEADZONE_VALUE ) ) / 32768 + TURRET_HOR_DC_DEADZONE_VALUE;
+							printf("%d\n", ABS(event.jaxis.value) ); // debug
+							turn_speed = value;
+						}
+
+						if ( event.jaxis.value < 0 ) {
+							turn_direction = "R";
+							turret_state = RIGHT;
+						}
+						else if ( event.jaxis.value > 0 ) {
+							turn_direction = "L";
+							turret_state = LEFT;
+						}
+						else {
+							turret_state = STOP;
+						}
+
+						/* Joystick run treshold protection */
+						if ( ABS( turn_speed - value ) > TURRET_HOR_DC_TRESHOLD_VALUE ) {
+							sprintf(command3, "turhdc=%s,%d,%d\n", turn_direction, turn_speed, turn_time);
+							send(sock, command3, strlen(command3), 0);
+						}
+						SET_ANALOG_INPUT;
+						break;
+					/* Turret axis */
 	        		case 1:
 	        			break;
 	        		}
