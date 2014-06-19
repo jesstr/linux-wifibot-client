@@ -6,6 +6,7 @@
  */
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include "graphic.h"
 #include "linux-wifibot-client.h"
 
@@ -15,6 +16,7 @@ SDL_Surface *sdlArrowSurface = NULL;
 SDL_Surface *sdlSpeedometerSurface = NULL;
 SDL_Surface *sdlPwmSurface = NULL;
 SDL_Surface *sdlMeterArrowSurface = NULL;
+SDL_Surface *sdlTextSurface = NULL;
 SDL_Window *sdlWindow = NULL;
 SDL_Renderer *sdlRenderer = NULL;
 SDL_Texture *sdlCarTexture = NULL;
@@ -24,11 +26,13 @@ SDL_Texture *sdlSpeedometerTexture = NULL;
 SDL_Texture *sdlPwmTexture = NULL;
 SDL_Texture *sdlMeterArrowTexture = NULL;
 SDL_Texture *sdlPwmArrowTexture = NULL;
+SDL_Texture *sdlTextTexture = NULL;
 SDL_Rect sdlCarDstrect;
 SDL_Rect sdlLeftWheelDstrect, sdlRightWheelDstrect;
 SDL_Rect sdlLeftArrowDstrect, sdlRightArrowDstrect;
 SDL_Rect sdlSpeedometerDstrect, sdlMeterArrowDstrect;
-SDL_Rect sdlPwmDstrect, sdlPwmArrowDstrect;;
+SDL_Rect sdlPwmDstrect, sdlPwmArrowDstrect;
+SDL_Rect sdlTextDstrect;
 SDL_Point sdlMeterArrowCenterPoint, sdlPwmArrowCenterPoint;
 
 
@@ -95,6 +99,8 @@ inline void Graphic_Init(void)
 	sdlPwmArrowCenterPoint.x = sdlPwmArrowDstrect.w - 11;
 	sdlPwmArrowCenterPoint.y = sdlPwmArrowDstrect.h - 14;
 
+	WriteText(5, 5, "You win!", 26, 255, 255, 127); // debug
+
 	UpdateScreen(0.0, NONE, JOYSTICK_RUN_DEADZONE_VALUE, 0);
 }
 
@@ -121,6 +127,9 @@ inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned c
 	case NONE:
 		break;
 	}
+
+	SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect);
+
 	SDL_RenderPresent(sdlRenderer);
 }
 
@@ -133,6 +142,7 @@ inline void Graphic_Destroy(void)
 	SDL_DestroyTexture(sdlPwmTexture);
 	SDL_DestroyTexture(sdlMeterArrowTexture);
 	SDL_DestroyTexture(sdlPwmArrowTexture);
+	SDL_DestroyTexture(sdlTextTexture);
 	SDL_DestroyRenderer(sdlRenderer);
 	SDL_DestroyWindow(sdlWindow);
 	SDL_FreeSurface(sdlCarSurface);
@@ -141,4 +151,37 @@ inline void Graphic_Destroy(void)
 	SDL_FreeSurface(sdlSpeedometerSurface);
 	SDL_FreeSurface(sdlPwmSurface);
 	SDL_FreeSurface(sdlMeterArrowSurface);
+	SDL_FreeSurface(sdlTextSurface);
+}
+
+/* Workflow.. */
+inline void WriteText(int x, int y, char *text, int size, int r, int g, int b)
+{
+    SDL_Color color;
+
+    color.a = 255;
+    color.r = 0;
+    color.g = 0;
+    color.b = 0;
+
+    TTF_Font * font = TTF_OpenFont("./font/FreeSans.ttf", size); // Загружаем шрифт по заданному адресу размером sz
+    if( font == NULL ) {
+    	printf("error -1: %s \n", SDL_GetError());
+    }
+
+    if ( (sdlTextSurface = TTF_RenderText_Blended(font, text, color)) == NULL ) { // Переносим на поверхность текст с заданным шрифтом и цветом
+    	puts("error 0");
+    }
+
+    if ( (sdlTextTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlTextSurface)) == 0 ) {
+    	puts("error 2");
+    }
+
+    SDL_GetClipRect(sdlTextSurface, &sdlTextDstrect);
+
+    if ( (SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect)) == -1 ) {
+    	puts("error 3");
+    }
+
+    TTF_CloseFont(font);
 }

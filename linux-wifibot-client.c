@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <pthread.h>
 #include "graphic.h"
 
@@ -143,6 +144,12 @@ int main(int argc, char **argv)
 
 	/* Init SDL */
 	if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
+	{
+		return 1;
+	}
+
+	/* Init SDL_ttf */
+	if( TTF_Init() != 0 )
 	{
 		return 1;
 	}
