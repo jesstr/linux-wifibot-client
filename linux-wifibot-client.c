@@ -25,6 +25,8 @@
 #define	JOYSTICK_RUN_DEADZONE_VALUE 	150
 #define	TURRET_HOR_DC_DEADZONE_VALUE 	70
 #define	TURRET_HOR_DC_TRESHOLD_VALUE 	2
+//#define	JOYSTICK_TURN_DEADZONE_VALUE 	0
+//#define	JOYSTICK_TURN_TRESHOLD_VALUE 	5
 
 #define KEYBOARD_SPEED_CONROL_THREAD	1	/* Speed & direstion control with keyboard thread id, */
 #define JOYSTICK_SPEED_CONROL_THREAD	3	/* Speed & direstion control with gamepad thread id */
@@ -522,6 +524,7 @@ int main(int argc, char **argv)
 	        			/* Joystick steer treshold protection */
 	        			if ( ABS( steer_pos - value ) > JOYSTICK_STEER_TRESHOLD_VALUE ) {
 	        				steer_pos = value;
+	        				printf("steer_pos = %d\n", steer_pos);
 	        				sprintf(command3, "steer=%d\n", steer_pos);
 	        				send(sock, command3, strlen(command3), 0);
 	        			}
