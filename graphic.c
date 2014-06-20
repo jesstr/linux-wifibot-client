@@ -115,7 +115,7 @@ inline void Graphic_Init(void)
 /* Update (redraw) the screen*/
 inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed) {
 
-	SDL_RenderClear(sdlRenderer); // trick: we don't need clear the render while updated textures are placed on updated background.
+	//SDL_RenderClear(sdlRenderer); // trick: we don't need clear the render while updated textures are placed on updated background.
 
 	/* Draw meters area */
 	SDL_RenderCopy(sdlRenderer, sdlSpeedometerTexture, NULL, &sdlSpeedometerDstrect);
@@ -134,18 +134,16 @@ inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned c
 	case FORWARD:
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlRightArrowDstrect, 0, NULL, 0);
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlLeftArrowDstrect, 0, NULL, 0);
-		//WriteText(5, 250, "FORWARD!", 26, sdlBlack); // debug
 		break;
 	case BACKWARD:
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlRightArrowDstrect, 0, NULL, SDL_FLIP_VERTICAL);
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlLeftArrowDstrect, 0, NULL, SDL_FLIP_VERTICAL);
-		//WriteText(5, 250, "BACKWARD!", 26, sdlBlack); // debug
 		break;
 	case NONE:
 		break;
 	}
 
-	SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect);
+	//SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect);
 
 	SDL_RenderPresent(sdlRenderer);
 }
@@ -187,35 +185,36 @@ inline void Graphic_Destroy(void)
 /* Render text on the screen */
 inline void WriteText(int x, int y, char *text, int size, SDL_Color color)
 {
-	/*
-	SDL_Surface surface;
-	SDL_Texture texture;
+	SDL_Surface *surface;
+	SDL_Texture *texture;
 	SDL_Rect rect;
-	*/
+
     TTF_Font *font = TTF_OpenFont("./font/FreeSans.ttf", size); // Загружаем шрифт по заданному адресу размером sz
     if( font == NULL ) {
     	printf("TTF_OpenFont: %s \n", SDL_GetError());
     	return;
     }
 
-    if ( (sdlTextSurface = TTF_RenderText_Blended(font, text, color)) == NULL ) { // Переносим на поверхность текст с заданным шрифтом и цветом
+    if ( (surface = TTF_RenderText_Blended(font, text, color)) == NULL ) { // Переносим на поверхность текст с заданным шрифтом и цветом
     	printf("TTF_RenderText_Blended: %s \n", SDL_GetError());
     	return;
     }
 
-    if ( (sdlTextTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlTextSurface)) == NULL ) {
+    if ( (texture = SDL_CreateTextureFromSurface(sdlRenderer, surface)) == NULL ) {
     	printf("SDL_CreateTextureFromSurface: %s \n", SDL_GetError());
     	return;
     }
 
-    SDL_GetClipRect(sdlTextSurface, &sdlTextDstrect);
-    sdlTextDstrect.x = x;
-    sdlTextDstrect.y = y;
+    SDL_GetClipRect(surface, &rect);
+    rect.x = x;
+    rect.y = y;
 
-    if ( (SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect)) != 0 ) {
+    if ( (SDL_RenderCopy(sdlRenderer, texture, NULL, &rect)) != 0 ) {
     	printf("SDL_RenderCopy: %s \n", SDL_GetError());
     	return;
     }
 
     TTF_CloseFont(font);
+	SDL_FreeSurface(surface);
+	SDL_DestroyTexture(texture);
 }
