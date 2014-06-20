@@ -449,7 +449,7 @@ int main(int argc, char **argv)
 	        	}
 	        }
 	    }
-	UpdateScreen((double)((0 - CENTER_STEER_POS + steer_pos) / 6), chassis_state, run_speed, 0);
+	Graphic_UpdateScreen((double)((0 - CENTER_STEER_POS + steer_pos) / 6), chassis_state, run_speed, 0);
 	}
 return 0;
 }

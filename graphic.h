@@ -20,8 +20,10 @@ inline void Graphic_Init(void);
 /* Destroy graphic objects and free memory */
 inline void Graphic_Destroy(void);
 /* Update (redraw) the screen*/
-inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed);
+inline void Graphic_UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed);
 /* Render text on the screen */
-inline void WriteText(int x, int y, char *text, int size, SDL_Color color);
+inline void Graphic_WriteText(int x, int y, char *text, int size, SDL_Color color);
+/* Render text with background on the screen */
+inline void Graphic_WriteTextShaded(int x, int y, char *text, int size, SDL_Color color, SDL_Color bg_color);
 
 #endif /* GRAPHIC_H_ */

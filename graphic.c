@@ -106,14 +106,15 @@ inline void Graphic_Init(void)
 
 	WriteText(5, 250, "You win!", 26, sdlBlack); // debug
 	WriteText(5, 300, "You win!", 26, sdlRed); // debug
+	WriteText_Shaded(5, 300, "Hello!", 26, sdlGreen, sdlWhite); // debug
 
 	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
 
-	UpdateScreen(0.0, NONE, JOYSTICK_RUN_DEADZONE_VALUE, 0);
+	Graphic_UpdateScreen(0.0, NONE, JOYSTICK_RUN_DEADZONE_VALUE, 0);
 }
 
 /* Update (redraw) the screen*/
-inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed) {
+inline void Graphic_UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed) {
 
 	//SDL_RenderClear(sdlRenderer); // trick: we don't need clear the render while updated textures are placed on updated background.
 
@@ -183,7 +184,7 @@ inline void Graphic_Destroy(void)
 }
 
 /* Render text on the screen */
-inline void WriteText(int x, int y, char *text, int size, SDL_Color color)
+inline void Graphic_WriteText(int x, int y, char *text, int size, SDL_Color color)
 {
 	SDL_Surface *surface;
 	SDL_Texture *texture;
@@ -218,3 +219,47 @@ inline void WriteText(int x, int y, char *text, int size, SDL_Color color)
 	SDL_FreeSurface(surface);
 	SDL_DestroyTexture(texture);
 }
+
+/* Render text with background on the screen */
+inline void Graphic_WriteTextShaded(int x, int y, char *text, int size, SDL_Color color, SDL_Color bg_color)
+{
+	SDL_Surface *surface;
+	SDL_Texture *texture;
+	SDL_Rect rect;
+
+    TTF_Font *font = TTF_OpenFont("./font/FreeSans.ttf", size);
+    if( font == NULL ) {
+    	printf("TTF_OpenFont: %s \n", SDL_GetError());
+    	return;
+    }
+
+    if ( (surface = TTF_RenderText_Shaded(font, text, color, bg_color)) == NULL ) {
+    	printf("TTF_RenderText_Blended: %s \n", SDL_GetError());
+    	return;
+    }
+
+    if ( (texture = SDL_CreateTextureFromSurface(sdlRenderer, surface)) == NULL ) {
+    	printf("SDL_CreateTextureFromSurface: %s \n", SDL_GetError());
+    	return;
+    }
+
+    SDL_GetClipRect(surface, &rect);
+    rect.x = x;
+    rect.y = y;
+
+    if ( (SDL_RenderCopy(sdlRenderer, texture, NULL, &rect)) != 0 ) {
+    	printf("SDL_RenderCopy: %s \n", SDL_GetError());
+    	return;
+    }
+
+    TTF_CloseFont(font);
+	SDL_FreeSurface(surface);
+	SDL_DestroyTexture(texture);
+}
+
+/* Erase text on the screen */
+inline void EraseText(SDL_Rect *rect)
+{
+	SDL_RenderFillRect(sdlRenderer, rect);
+}
+
