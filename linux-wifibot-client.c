@@ -207,7 +207,7 @@ int main(int argc, char **argv)
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0) {
-       perror("socket");
+       perror("Socket");
        return 1;
     }
 
@@ -215,14 +215,14 @@ int main(int argc, char **argv)
     addr.sin_addr.s_addr = inet_addr(dest_addr);
     addr.sin_port = htons(atoi(dest_port));
 
-    printf("Connecting %s:%s...", dest_addr, dest_port);
+    printf("Connecting %s:%s...\n", dest_addr, dest_port);
 
     if(connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("connect");
+        perror("Connect");
         return 2;
     }
 
-    puts("Connected.");
+    puts("Connected!");
 	puts("press ENTER to exit");
 
 	/* Telemetry thread creating */
