@@ -104,9 +104,9 @@ inline void Graphic_Init(void)
 	sdlPwmArrowCenterPoint.x = sdlPwmArrowDstrect.w - 11;
 	sdlPwmArrowCenterPoint.y = sdlPwmArrowDstrect.h - 14;
 
-	WriteText(5, 250, "You win!", 26, sdlBlack); // debug
-	WriteText(5, 300, "You win!", 26, sdlRed); // debug
-	WriteText_Shaded(5, 300, "Hello!", 26, sdlGreen, sdlWhite); // debug
+	Graphic_WriteText(5, 250, "You win!", 26, sdlBlack); // debug
+	Graphic_WriteText(5, 300, "You win!", 26, sdlRed); // debug
+	Graphic_WriteTextShaded(5, 300, "Hello!", 26, sdlGreen, sdlWhite); // debug
 
 	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
 
