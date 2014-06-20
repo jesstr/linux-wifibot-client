@@ -35,7 +35,12 @@ SDL_Rect sdlPwmDstrect, sdlPwmArrowDstrect;
 SDL_Rect sdlTextDstrect;
 SDL_Point sdlMeterArrowCenterPoint, sdlPwmArrowCenterPoint;
 
+SDL_Color sdlBlack = {0, 0, 0};
+SDL_Color sdlWhite = {255, 255, 255};
+SDL_Color sdlRed = {255, 0, 0};
+SDL_Color sdlGreen = {0, 255, 0};
 
+/* Init graphic objects */
 inline void Graphic_Init(void)
 {
 	SDL_CreateWindowAndRenderer(640, 480, 0, &sdlWindow, &sdlRenderer);
@@ -99,30 +104,42 @@ inline void Graphic_Init(void)
 	sdlPwmArrowCenterPoint.x = sdlPwmArrowDstrect.w - 11;
 	sdlPwmArrowCenterPoint.y = sdlPwmArrowDstrect.h - 14;
 
-	WriteText(5, 5, "You win!", 26, 255, 255, 127); // debug
+	WriteText(5, 250, "You win!", 26, sdlBlack); // debug
+	WriteText(5, 300, "You win!", 26, sdlRed); // debug
+
+	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
 
 	UpdateScreen(0.0, NONE, JOYSTICK_RUN_DEADZONE_VALUE, 0);
 }
 
+/* Update (redraw) the screen*/
 inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned char pwm, unsigned char speed) {
-	SDL_RenderClear(sdlRenderer);
-	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
+
+	SDL_RenderClear(sdlRenderer); // trick: we don't need clear the render while updated textures are placed on updated background.
+
+	/* Draw meters area */
 	SDL_RenderCopy(sdlRenderer, sdlSpeedometerTexture, NULL, &sdlSpeedometerDstrect);
 	SDL_RenderCopy(sdlRenderer, sdlPwmTexture, NULL, &sdlPwmDstrect);
 
 	SDL_RenderCopyEx(sdlRenderer, sdlMeterArrowTexture, NULL, &sdlMeterArrowDstrect, ( (double) pwm ) - 135.0, &sdlMeterArrowCenterPoint, 0);
 	SDL_RenderCopyEx(sdlRenderer, sdlPwmArrowTexture, NULL, &sdlPwmArrowDstrect, ( (double) speed ) - 135.0, &sdlPwmArrowCenterPoint, 0);
 
+	/* Draw car scheme */
+	SDL_RenderCopy(sdlRenderer, sdlCarTexture, NULL, &sdlCarDstrect);
+
 	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlLeftWheelDstrect, steer_angle, NULL, 0);
 	SDL_RenderCopyEx(sdlRenderer, sdlWheelTexture, NULL, &sdlRightWheelDstrect, steer_angle, NULL, SDL_FLIP_HORIZONTAL);
+
 	switch (direction) {
 	case FORWARD:
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlRightArrowDstrect, 0, NULL, 0);
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlLeftArrowDstrect, 0, NULL, 0);
+		//WriteText(5, 250, "FORWARD!", 26, sdlBlack); // debug
 		break;
 	case BACKWARD:
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlRightArrowDstrect, 0, NULL, SDL_FLIP_VERTICAL);
 		SDL_RenderCopyEx(sdlRenderer, sdlArrowTexture, NULL, &sdlLeftArrowDstrect, 0, NULL, SDL_FLIP_VERTICAL);
+		//WriteText(5, 250, "BACKWARD!", 26, sdlBlack); // debug
 		break;
 	case NONE:
 		break;
@@ -133,6 +150,19 @@ inline void UpdateScreen(double steer_angle, unsigned char direction, unsigned c
 	SDL_RenderPresent(sdlRenderer);
 }
 
+
+inline void RenderImages()
+{
+
+}
+
+
+inline void RenderText()
+{
+
+}
+
+/* Destroy graphic objects and free memory */
 inline void Graphic_Destroy(void)
 {
 	SDL_DestroyTexture(sdlCarTexture);
@@ -154,33 +184,37 @@ inline void Graphic_Destroy(void)
 	SDL_FreeSurface(sdlTextSurface);
 }
 
-/* Workflow.. */
-inline void WriteText(int x, int y, char *text, int size, int r, int g, int b)
+/* Render text on the screen */
+inline void WriteText(int x, int y, char *text, int size, SDL_Color color)
 {
-    SDL_Color color;
-
-    color.a = 255;
-    color.r = 0;
-    color.g = 0;
-    color.b = 0;
-
-    TTF_Font * font = TTF_OpenFont("./font/FreeSans.ttf", size); // Загружаем шрифт по заданному адресу размером sz
+	/*
+	SDL_Surface surface;
+	SDL_Texture texture;
+	SDL_Rect rect;
+	*/
+    TTF_Font *font = TTF_OpenFont("./font/FreeSans.ttf", size); // Загружаем шрифт по заданному адресу размером sz
     if( font == NULL ) {
-    	printf("error -1: %s \n", SDL_GetError());
+    	printf("TTF_OpenFont: %s \n", SDL_GetError());
+    	return;
     }
 
     if ( (sdlTextSurface = TTF_RenderText_Blended(font, text, color)) == NULL ) { // Переносим на поверхность текст с заданным шрифтом и цветом
-    	puts("error 0");
+    	printf("TTF_RenderText_Blended: %s \n", SDL_GetError());
+    	return;
     }
 
-    if ( (sdlTextTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlTextSurface)) == 0 ) {
-    	puts("error 2");
+    if ( (sdlTextTexture = SDL_CreateTextureFromSurface(sdlRenderer, sdlTextSurface)) == NULL ) {
+    	printf("SDL_CreateTextureFromSurface: %s \n", SDL_GetError());
+    	return;
     }
 
     SDL_GetClipRect(sdlTextSurface, &sdlTextDstrect);
+    sdlTextDstrect.x = x;
+    sdlTextDstrect.y = y;
 
-    if ( (SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect)) == -1 ) {
-    	puts("error 3");
+    if ( (SDL_RenderCopy(sdlRenderer, sdlTextTexture, NULL, &sdlTextDstrect)) != 0 ) {
+    	printf("SDL_RenderCopy: %s \n", SDL_GetError());
+    	return;
     }
 
     TTF_CloseFont(font);
