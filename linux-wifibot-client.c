@@ -396,8 +396,10 @@ int main(int argc, char **argv)
 	        			else {
 	        				chassis_state = NONE;
 	        			}
+
 	        			value = ( ABS(event.jaxis.value)  * ( 255 - JOYSTICK_RUN_DEADZONE_VALUE ) ) / 32768 + JOYSTICK_RUN_DEADZONE_VALUE;
 	        			printf("%d\n", ABS(event.jaxis.value) ); // debug
+
 	        			/* Joystick run treshold protection */
 	        			if ( ABS( run_speed - value ) > JOYSTICK_RUN_TRESHOLD_VALUE ) {
 	        				run_speed = value;
@@ -408,15 +410,6 @@ int main(int argc, char **argv)
 	        			break;
 	        		/* Turret axis */
 					case 0:
-						if (turret_state == STOP) {
-							turn_speed = 150;
-						}
-						else {
-							value = ( ABS(event.jaxis.value)  * ( 200 - TURRET_HOR_DC_DEADZONE_VALUE ) ) / 32768 + TURRET_HOR_DC_DEADZONE_VALUE;
-							printf("%d\n", ABS(event.jaxis.value) ); // debug
-							turn_speed = value;
-						}
-
 						if ( event.jaxis.value < 0 ) {
 							turn_direction = "R";
 							turret_state = RIGHT;
@@ -428,6 +421,10 @@ int main(int argc, char **argv)
 						else {
 							turret_state = STOP;
 						}
+
+						value = ( ABS(event.jaxis.value)  * ( 200 - TURRET_HOR_DC_DEADZONE_VALUE ) ) / 32768 + TURRET_HOR_DC_DEADZONE_VALUE;
+						printf("%d\n", ABS(event.jaxis.value) ); // debug
+						turn_speed = value;
 
 						/* Joystick run treshold protection */
 						if ( ABS( turn_speed - value ) > TURRET_HOR_DC_TRESHOLD_VALUE ) {
